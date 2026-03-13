@@ -1,0 +1,17 @@
+
+.venv/
+venv/
+__pycache__/
+
+data/depth_maps_test/
+data/test/
+data/depth_maps/
+data/train/
+data/frames/
+data/frames_test/
+
+checkpoints/unet/*
+checkpoints/rppg/*
+
+*.pth
+*.pt
