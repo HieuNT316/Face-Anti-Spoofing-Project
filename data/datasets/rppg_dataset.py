@@ -16,8 +16,10 @@ class RPPGDataset(Dataset):
         for label in ['real_seq', 'fake_seq']:
             label_path = os.path.join(root_dir, label)
             if not os.path.exists(label_path):
+                print(f"⚠️ Không tìm thấy thư mục: {label_path}")
                 continue
 
+            # Duyệt qua từng thư mục sequence (vd: seq_00000, seq_00001...)
             for seq in os.listdir(label_path):
                 seq_path = os.path.join(label_path, seq)
                 if not os.path.isdir(seq_path):
@@ -29,10 +31,14 @@ class RPPGDataset(Dataset):
                     if f.lower().endswith(('.jpg', '.jpeg', '.png'))
                 ])
 
-                # Duyệt theo cửa sổ trượt để lấy sequence
-                for i in range(0, len(frame_files) - seq_len + 1):
-                    frame_paths = [os.path.join(seq_path, frame_files[j]) for j in range(i, i + seq_len)]
-                    self.samples.append((frame_paths, 1 if label == 'real_seq' else 0))
+                # BỎ VÒNG LẶP TRƯỢT. Thay vào đó, kiểm tra xem thư mục có đủ ảnh không.
+                if len(frame_files) >= seq_len:
+                    # Chỉ lấy đúng seq_len frames đầu tiên
+                    frame_paths = [os.path.join(seq_path, frame_files[j]) for j in range(seq_len)]
+                    label_idx = 1 if label == 'real_seq' else 0
+                    self.samples.append((frame_paths, label_idx))
+                else:
+                    print(f"⚠️ Bỏ qua {seq_path}: Chỉ có {len(frame_files)} frames (yêu cầu {seq_len})")
 
         print(f"[INFO] Tổng số sequence samples: {len(self.samples)}")
 
@@ -46,5 +52,6 @@ class RPPGDataset(Dataset):
             img = Image.open(path).convert("RGB")
             img = self.transform(img)
             frames.append(img)
+            
         video_tensor = torch.stack(frames)  # [seq_len, 3, H, W]
         return video_tensor, torch.tensor(label, dtype=torch.long)
