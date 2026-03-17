@@ -99,11 +99,23 @@ def process_all_videos(video_root, output_root, seq_len=100, stride=50, max_fram
     if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
 
 if __name__ == "__main__":
-    input_dir = r"D:\ml_course\project2_face_anti\data\video_goc"
-    output_dir = r"D:\ml_course\project2_face_anti\data\frames"
+    # 1. Đọc video từ Drive
+    input_dir = r"/content/drive/MyDrive/ml_course/project2_face_anti/data/video_goc" 
     
-    # THAY ĐỔI THÔNG SỐ Ở ĐÂY:
-    # seq_len=100, stride=50 nghĩa là mỗi sequence gối đầu lên nhau 50%
-    # Với max_frames=300, bạn sẽ thu được 5 sequence thay vì 3 như trước.
-    # (0-100, 50-150, 100-200, 150-250, 200-300)
-    process_all_videos(input_dir, output_dir, seq_len=100, stride=50, max_frames=300)
+    # 2. Thay vì lưu thẳng lên Drive, hãy lưu vào ổ CỤC BỘ của Colab trước
+    colab_output_dir = r"/content/dataset_frames" 
+    
+    print("🚀 Bắt đầu quá trình cắt và chia sequence trên ổ cục bộ Colab...")
+    process_all_videos(input_dir, colab_output_dir, seq_len=100, stride=50, max_frames=300)
+    
+    # 3. Nén toàn bộ folder output thành 1 file zip duy nhất
+    print("📦 Đang nén dữ liệu thành file zip...")
+    zip_path = r"/content/rppg_frames_dataset" # Tên file nén (chưa kèm đuôi .zip)
+    shutil.make_archive(zip_path, 'zip', colab_output_dir)
+    
+    # 4. Copy duy nhất 1 file zip đó lên Google Drive
+    print("☁️ Đang chuyển file zip lên Google Drive...")
+    drive_dest = r"/content/drive/MyDrive/ml_course/project2_face_anti/data/rppg_frames_dataset.zip"
+    shutil.copy(zip_path + ".zip", drive_dest)
+    
+    print(f"✅ Hoàn tất! Dữ liệu của bạn đã được lưu an toàn tại: {drive_dest}")
