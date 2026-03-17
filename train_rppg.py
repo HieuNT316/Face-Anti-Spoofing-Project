@@ -55,7 +55,7 @@ best_checkpoint_path = os.path.join(save_dir, "best_rppg.pth")
 # ---------------------------------------------------------
 # Khởi tạo Dataset tổng
 data_root = r"D:\ml_course\project2_face_anti\data\frames"
-full_dataset = RPPGDataset(root_dir=data_root, seq_len=100)
+full_dataset = RPPGDataset(root_dir=data_root, seq_len=100, stride=50)
 
 # Chia tỉ lệ 80% Train, 20% Val
 train_size = int(0.8 * len(full_dataset))

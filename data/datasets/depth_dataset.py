@@ -10,35 +10,34 @@ class DepthDataset(Dataset):
     def __init__(self, frames_dir, depth_dir, is_train=True):
         self.samples = []
         self.is_train = is_train
+        
+        valid_labels = ['real', 'fake', 'real_seq', 'fake_seq']
 
-        for label in ["real_seq", "fake_seq"]:
+        for label in valid_labels:
             frames_label_dir = os.path.join(frames_dir, label)
             depth_label_dir = os.path.join(depth_dir, label)
 
             if not os.path.isdir(frames_label_dir) or not os.path.isdir(depth_label_dir):
                 continue
 
-            # --- MỚI: Đánh dấu label để tạo cờ is_fake ---
-            is_fake = 1.0 if label == "fake_seq" else 0.0
+            is_fake = 1.0 if 'fake' in label else 0.0
 
-            for seq_name in os.listdir(frames_label_dir):
-                frames_seq_dir = os.path.join(frames_label_dir, seq_name)
-                depth_seq_dir = os.path.join(depth_label_dir, seq_name)
+            for video_name in os.listdir(frames_label_dir):
+                frames_vid_dir = os.path.join(frames_label_dir, video_name)
+                depth_vid_dir = os.path.join(depth_label_dir, video_name)
 
-                if not os.path.isdir(frames_seq_dir) or not os.path.isdir(depth_seq_dir):
+                if not os.path.isdir(frames_vid_dir) or not os.path.isdir(depth_vid_dir):
                     continue
 
-                for frame_name in os.listdir(frames_seq_dir):
-                    frame_path = os.path.join(frames_seq_dir, frame_name)
-                    depth_path = os.path.join(depth_seq_dir, frame_name)
+                # Load tất cả frame trong video
+                for frame_name in os.listdir(frames_vid_dir):
+                    frame_path = os.path.join(frames_vid_dir, frame_name)
+                    depth_path = os.path.join(depth_vid_dir, frame_name)
 
                     if os.path.exists(frame_path) and os.path.exists(depth_path):
-                        # --- MỚI: Lưu thêm is_fake vào tuple ---
                         self.samples.append((frame_path, depth_path, is_fake))
 
-        self.color_jitter = transforms.ColorJitter(
-            brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1
-        )
+        self.color_jitter = transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1)
         self.blur = transforms.GaussianBlur(kernel_size=(5, 5), sigma=(0.1, 2.0))
 
     def __len__(self):

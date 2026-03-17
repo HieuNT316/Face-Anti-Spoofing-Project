@@ -1,15 +1,16 @@
 import os
 import cv2
 import shutil
-from glob import glob
 
 def extract_frames(video_path, output_folder, max_frames=300, step=1):
     """
-    Trích xuất frame từ video.
-    Đã đổi step=1 để lấy ảnh LIÊN TỤC, không làm đứt gãy tín hiệu rPPG.
+    Trích xuất frame từ video một cách đơn giản, không nhân bản.
     """
     cap = cv2.VideoCapture(video_path)
     count, saved = 0, 0
+
+    # Tạo thư mục đích cho video này nếu chưa có
+    os.makedirs(output_folder, exist_ok=True)
 
     while cap.isOpened() and saved < max_frames:
         ret, frame = cap.read()
@@ -22,95 +23,55 @@ def extract_frames(video_path, output_folder, max_frames=300, step=1):
             if w > h:
                 frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
 
-            os.makedirs(output_folder, exist_ok=True)
-            frame_path = os.path.join(output_folder, f"{saved:04d}.png") # Tăng lên 4 số để chứa đủ 100+ frame
+            # Đặt tên file chuẩn: frame_0000.png, frame_0001.png...
+            frame_path = os.path.join(output_folder, f"frame_{saved:04d}.png")
             cv2.imwrite(frame_path, frame)
             saved += 1
 
         count += 1
     cap.release()
 
-def split_to_sequences_sliding_window(image_folder, output_folder, seq_len=100, stride=50):
-    """
-    Chia mảng ảnh thành các sequence sử dụng kỹ thuật Sliding Window.
-    stride: Bước nhảy của cửa sổ. 
-    Ví dụ: seq_len=100, stride=50 -> Seq1: 0-99, Seq2: 50-149, Seq3: 100-199...
-    """
-    images = sorted(glob(os.path.join(image_folder, "*.png")))
-    
-    # Đếm số lượng thư mục seq đã có sẵn để đặt tên tiếp nối
-    existing = glob(os.path.join(output_folder, "seq_*"))
-    count = len(existing)
-    
-    added_count = 0
-    
-    # Vòng lặp trượt cửa sổ
-    # range(start, stop, step) -> step ở đây chính là stride
-    for i in range(0, len(images) - seq_len + 1, stride):
-        seq_imgs = images[i : i + seq_len]
-        
-        # Tạo thư mục cho sequence mới
-        seq_folder = os.path.join(output_folder, f"seq_{count:05d}") # Tăng lên 5 số cho thoải mái
-        os.makedirs(seq_folder, exist_ok=True)
-        
-        for j, img_path in enumerate(seq_imgs):
-            # Lưu frame vào folder mới, đánh số từ 0001 đến seq_len
-            new_path = os.path.join(seq_folder, f"frame_{j + 1:04d}.png")
-            shutil.copy(img_path, new_path)
-            
-        count += 1
-        added_count += 1
-
-    return added_count
-
-def process_all_videos(video_root, output_root, seq_len=100, stride=50, max_frames=300):
-    temp_dir = "temp_frames"
+def process_all_videos(video_root, output_root, max_frames=300):
     labels = ['real', 'fake']
 
     for label in labels:
         input_dir = os.path.join(video_root, label)
-        output_dir_label = os.path.join(output_root, f"{label}_seq")
-        os.makedirs(output_dir_label, exist_ok=True)
-
+        output_dir_label = os.path.join(output_root, label) # Lưu vào 'real' và 'fake', bỏ hậu tố '_seq'
+        
         if not os.path.exists(input_dir):
+            print(f"⚠️ Bỏ qua: Không tìm thấy thư mục {input_dir}")
             continue
 
         videos = [f for f in os.listdir(input_dir) if f.lower().endswith((".mp4", ".avi", ".mov", ".mkv"))]
-        seq_total = 0
-
+        
         for video_file in videos:
             video_path = os.path.join(input_dir, video_file)
-            if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
-            os.makedirs(temp_dir)
-
-            print(f"🔍 Processing: {video_file} | Class: {label.upper()}")
+            video_name = os.path.splitext(video_file)[0] # Lấy tên video (bỏ đuôi .mp4)
             
-            extract_frames(video_path, temp_dir, max_frames=max_frames, step=1)
+            # ĐƯỜNG DẪN MỚI: /dataset_frames/real/tên_video/
+            out_video_dir = os.path.join(output_dir_label, video_name)
             
-            # GỌI HÀM SLIDING WINDOW Ở ĐÂY
-            added = split_to_sequences_sliding_window(temp_dir, output_dir_label, seq_len=seq_len, stride=stride)
+            print(f"🔍 Processing: {video_file} -> {out_video_dir}")
             
-            if added > 0:
-                print(f"   ➕ Added {added} sequences (Overlap stride: {stride})")
-            seq_total += added
-
-        print(f"✅ {label.upper()}: Total {seq_total} sequences created.")
-
-    if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
+            # Cắt thẳng vào thư mục của video đó, KHÔNG DÙNG THƯ MỤC TEMP NỮA
+            extract_frames(video_path, out_video_dir, max_frames=max_frames, step=1)
+            
+        print(f"✅ {label.upper()}: Hoàn tất cắt frame.")
 
 if __name__ == "__main__":
     # 1. Đọc video từ Drive
     input_dir = r"/content/drive/MyDrive/ml_course/project2_face_anti/data/video_goc" 
     
-    # 2. Thay vì lưu thẳng lên Drive, hãy lưu vào ổ CỤC BỘ của Colab trước
+    # 2. Lưu vào ổ CỤC BỘ của Colab trước
     colab_output_dir = r"/content/dataset_frames" 
     
-    print("🚀 Bắt đầu quá trình cắt và chia sequence trên ổ cục bộ Colab...")
-    process_all_videos(input_dir, colab_output_dir, seq_len=100, stride=50, max_frames=300)
+    print("🚀 Bắt đầu quá trình cắt frame siêu nhẹ trên ổ cục bộ Colab...")
+    # Không còn cần truyền seq_len và stride vào đây nữa
+    process_all_videos(input_dir, colab_output_dir, max_frames=300)
     
     # 3. Nén toàn bộ folder output thành 1 file zip duy nhất
     print("📦 Đang nén dữ liệu thành file zip...")
-    zip_path = r"/content/rppg_frames_dataset" # Tên file nén (chưa kèm đuôi .zip)
+    zip_path = r"/content/rppg_frames_dataset" 
     shutil.make_archive(zip_path, 'zip', colab_output_dir)
     
     # 4. Copy duy nhất 1 file zip đó lên Google Drive
@@ -118,4 +79,4 @@ if __name__ == "__main__":
     drive_dest = r"/content/drive/MyDrive/ml_course/project2_face_anti/data/rppg_frames_dataset.zip"
     shutil.copy(zip_path + ".zip", drive_dest)
     
-    print(f"✅ Hoàn tất! Dữ liệu của bạn đã được lưu an toàn tại: {drive_dest}")
+    print(f"✅ Hoàn tất! File Zip của bạn giờ đây đã nhẹ hơn rất nhiều và được lưu an toàn tại: {drive_dest}")

@@ -5,50 +5,65 @@ from PIL import Image
 import torch
 
 class RPPGDataset(Dataset):
-    def __init__(self, root_dir, seq_len=100, transform=None):
+    def __init__(self, root_dir, seq_len=100, stride=50, transform=None):
         self.samples = []
         self.seq_len = seq_len
+        self.stride = stride
         self.transform = transform or transforms.Compose([
             transforms.Resize((128, 128)),
             transforms.ToTensor()
         ])
 
-        for label in ['real_seq', 'fake_seq']:
-            label_path = os.path.join(root_dir, label)
-            if not os.path.exists(label_path):
-                print(f"⚠️ Không tìm thấy thư mục: {label_path}")
+        # Hỗ trợ cả tên thư mục cũ và mới
+        valid_labels = ['real', 'fake', 'real_seq', 'fake_seq']
+
+        for label_dir in os.listdir(root_dir):
+            if label_dir not in valid_labels:
                 continue
 
-            # Duyệt qua từng thư mục sequence (vd: seq_00000, seq_00001...)
-            for seq in os.listdir(label_path):
-                seq_path = os.path.join(label_path, seq)
-                if not os.path.isdir(seq_path):
+            label_path = os.path.join(root_dir, label_dir)
+            label_idx = 1 if 'real' in label_dir else 0
+
+            # Duyệt qua từng thư mục video (vd: video_01, video_02...)
+            for video_folder in os.listdir(label_path):
+                video_path = os.path.join(label_path, video_folder)
+                if not os.path.isdir(video_path):
                     continue
 
-                # Lấy danh sách ảnh hợp lệ (jpg, png) và sắp xếp theo tên
+                # Lấy danh sách ảnh và sắp xếp chuẩn
                 frame_files = sorted([
-                    f for f in os.listdir(seq_path)
+                    f for f in os.listdir(video_path)
                     if f.lower().endswith(('.jpg', '.jpeg', '.png'))
                 ])
+                
+                num_frames = len(frame_files)
 
-                # BỎ VÒNG LẶP TRƯỢT. Thay vào đó, kiểm tra xem thư mục có đủ ảnh không.
-                if len(frame_files) >= seq_len:
-                    # Chỉ lấy đúng seq_len frames đầu tiên
-                    frame_paths = [os.path.join(seq_path, frame_files[j]) for j in range(seq_len)]
-                    label_idx = 1 if label == 'real_seq' else 0
-                    self.samples.append((frame_paths, label_idx))
+                # ======================================================
+                # THUẬT TOÁN SLIDING WINDOW ẢO (TRÊN RAM)
+                # ======================================================
+                if num_frames >= seq_len:
+                    # Tạo các vị trí bắt đầu (start_idx) với bước nhảy stride
+                    for start_idx in range(0, num_frames - seq_len + 1, self.stride):
+                        # Thay vì lưu ảnh, ta chỉ lưu "bản đồ" vị trí
+                        self.samples.append((video_path, frame_files, start_idx, label_idx))
                 else:
-                    print(f"⚠️ Bỏ qua {seq_path}: Chỉ có {len(frame_files)} frames (yêu cầu {seq_len})")
+                    print(f"⚠️ Bỏ qua {video_folder}: Chỉ có {num_frames} frames (cần tối thiểu {seq_len})")
 
-        print(f"[INFO] Tổng số sequence samples: {len(self.samples)}")
+        print(f"📊 [INFO] Đã tạo ảo {len(self.samples)} sequences từ dữ liệu gốc.")
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        frame_paths, label = self.samples[idx]
+        # Unpack "bản đồ"
+        video_path, frame_files, start_idx, label = self.samples[idx]
+        
         frames = []
-        for path in frame_paths:
+        # Chỉ load đúng seq_len frame tính từ vị trí start_idx
+        for j in range(self.seq_len):
+            frame_name = frame_files[start_idx + j]
+            path = os.path.join(video_path, frame_name)
+            
             img = Image.open(path).convert("RGB")
             img = self.transform(img)
             frames.append(img)
