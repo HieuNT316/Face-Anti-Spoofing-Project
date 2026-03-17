@@ -42,9 +42,11 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # Load dataset
 dataset = DepthDataset(
     frames_dir=r"D:\ml_course\project2_face_anti\data\frames",
-    depth_dir=r"D:\ml_course\project2_face_anti\data\depth_maps"
+    depth_dir=r"D:\ml_course\project2_face_anti\data\depth_maps",
+    is_train=True
 )
-dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
+# 2. Tăng batch_size nếu GPU cho phép để xử lý lượng data khổng lồ từ sliding window
+dataloader = DataLoader(dataset, batch_size=16, shuffle=True, num_workers=4)
 
 # Khởi tạo model và optimizer
 model = UNetDepthCNN().to(device)
