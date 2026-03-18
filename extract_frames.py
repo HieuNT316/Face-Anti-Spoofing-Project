@@ -2,14 +2,12 @@ import os
 import cv2
 import shutil
 
-def extract_frames(video_path, output_folder, max_frames=300, step=1):
+def extract_frames(video_path, output_folder, max_frames=100, step=1):
     """
-    Trích xuất frame từ video một cách đơn giản, không nhân bản.
+    Trích xuất frame từ video (Tối đa 100 frames)
     """
     cap = cv2.VideoCapture(video_path)
     count, saved = 0, 0
-
-    # Tạo thư mục đích cho video này nếu chưa có
     os.makedirs(output_folder, exist_ok=True)
 
     while cap.isOpened() and saved < max_frames:
@@ -18,65 +16,93 @@ def extract_frames(video_path, output_folder, max_frames=300, step=1):
             break
 
         if count % step == 0:
-            # Nếu ảnh nằm ngang, xoay lại thành dọc
             h, w = frame.shape[:2]
             if w > h:
                 frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
 
-            # Đặt tên file chuẩn: frame_0000.png, frame_0001.png...
             frame_path = os.path.join(output_folder, f"frame_{saved:04d}.png")
             cv2.imwrite(frame_path, frame)
             saved += 1
 
         count += 1
     cap.release()
+    return saved # Trả về số lượng đã lưu để kiểm tra
 
-def process_all_videos(video_root, output_root, max_frames=300):
+def zip_and_upload(local_dir, drive_dir, batch_num):
+    """
+    Hàm thực hiện: Nén Zip -> Đẩy lên Drive -> Dọn rác Colab
+    """
+    print(f"\n📦 Đang đóng gói Batch {batch_num}...")
+    zip_filename = f"dataset_batch_{batch_num:03d}"
+    zip_local_path = os.path.join("/content", zip_filename)
+
+    # 1. Nén thư mục
+    shutil.make_archive(zip_local_path, 'zip', local_dir)
+
+    # 2. Chuyển lên Drive
+    drive_dest = os.path.join(drive_dir, f"{zip_filename}.zip")
+    print(f"☁️ Đang upload Batch {batch_num} lên Drive: {drive_dest}")
+    shutil.copy(f"{zip_local_path}.zip", drive_dest)
+
+    # 3. DỌN DẸP BỘ NHỚ COLAB CHỐNG TRÀN ĐĨA
+    print("🧹 Đang dọn dẹp bộ nhớ tạm Colab...")
+    os.remove(f"{zip_local_path}.zip")
+    shutil.rmtree(local_dir)
+    os.makedirs(local_dir, exist_ok=True) # Tạo lại thư mục rỗng cho batch sau
+    
+    print(f"✅ Hoàn tất Batch {batch_num}!\n")
+
+def process_and_batch_videos(video_root, colab_temp_root, drive_zip_dir, max_frames=100, batch_size=30):
     labels = ['real', 'fake']
+    os.makedirs(drive_zip_dir, exist_ok=True)
+
+    batch_count = 1
+    videos_in_current_batch = 0
 
     for label in labels:
         input_dir = os.path.join(video_root, label)
-        output_dir_label = os.path.join(output_root, label) # Lưu vào 'real' và 'fake', bỏ hậu tố '_seq'
-        
         if not os.path.exists(input_dir):
-            print(f"⚠️ Bỏ qua: Không tìm thấy thư mục {input_dir}")
             continue
 
         videos = [f for f in os.listdir(input_dir) if f.lower().endswith((".mp4", ".avi", ".mov", ".mkv"))]
         
         for video_file in videos:
             video_path = os.path.join(input_dir, video_file)
-            video_name = os.path.splitext(video_file)[0] # Lấy tên video (bỏ đuôi .mp4)
+            video_name = os.path.splitext(video_file)[0]
             
-            # ĐƯỜNG DẪN MỚI: /dataset_frames/real/tên_video/
-            out_video_dir = os.path.join(output_dir_label, video_name)
+            # Lưu tạm trên Colab: /content/dataset_frames/real/video_name/
+            out_video_dir = os.path.join(colab_temp_root, label, video_name)
             
-            print(f"🔍 Processing: {video_file} -> {out_video_dir}")
+            print(f"🔍 Cắt frame: {video_file} -> {out_video_dir}")
+            frames_extracted = extract_frames(video_path, out_video_dir, max_frames=max_frames, step=1)
             
-            # Cắt thẳng vào thư mục của video đó, KHÔNG DÙNG THƯ MỤC TEMP NỮA
-            extract_frames(video_path, out_video_dir, max_frames=max_frames, step=1)
+            if frames_extracted < max_frames:
+                 print(f"   ⚠️ LƯU Ý: Video này ngắn, chỉ trích xuất được {frames_extracted}/{max_frames} frame.")
             
-        print(f"✅ {label.upper()}: Hoàn tất cắt frame.")
+            videos_in_current_batch += 1
+            
+            # NẾU ĐẠT NGƯỠNG (batch_size) -> NÉN, UPLOAD VÀ XÓA CỤC BỘ
+            if videos_in_current_batch >= batch_size:
+                zip_and_upload(colab_temp_root, drive_zip_dir, batch_count)
+                batch_count += 1
+                videos_in_current_batch = 0
+
+    # Xử lý nốt những video còn dư ở batch cuối cùng
+    if videos_in_current_batch > 0:
+        zip_and_upload(colab_temp_root, drive_zip_dir, batch_count)
 
 if __name__ == "__main__":
-    # 1. Đọc video từ Drive
+    # 1. Thư mục chứa video gốc trên Drive
     input_dir = r"/content/drive/MyDrive/ml_course/project2_face_anti/data/video_goc" 
     
-    # 2. Lưu vào ổ CỤC BỘ của Colab trước
-    colab_output_dir = r"/content/dataset_frames" 
+    # 2. Thư mục chứa các file ZIP kết quả trên Drive
+    drive_dest_dir = r"/content/drive/MyDrive/ml_course/project2_face_anti/data/rppg_batches"
     
-    print("🚀 Bắt đầu quá trình cắt frame siêu nhẹ trên ổ cục bộ Colab...")
-    # Không còn cần truyền seq_len và stride vào đây nữa
-    process_all_videos(input_dir, colab_output_dir, max_frames=300)
+    # 3. Thư mục tạm trên Colab (sẽ liên tục bị xóa và tạo lại)
+    colab_temp_dir = r"/content/dataset_frames" 
     
-    # 3. Nén toàn bộ folder output thành 1 file zip duy nhất
-    print("📦 Đang nén dữ liệu thành file zip...")
-    zip_path = r"/content/rppg_frames_dataset" 
-    shutil.make_archive(zip_path, 'zip', colab_output_dir)
+    print("🚀 BẮT ĐẦU TRÍCH XUẤT VÀ CHIA LÔ (BATCHING)...")
+    # batch_size=30 nghĩa là cứ xử lý xong 30 video sẽ đẩy lên drive và dọn rác 1 lần
+    process_and_batch_videos(input_dir, colab_temp_dir, drive_dest_dir, max_frames=100, batch_size=30)
     
-    # 4. Copy duy nhất 1 file zip đó lên Google Drive
-    print("☁️ Đang chuyển file zip lên Google Drive...")
-    drive_dest = r"/content/drive/MyDrive/ml_course/project2_face_anti/data/rppg_frames_dataset.zip"
-    shutil.copy(zip_path + ".zip", drive_dest)
-    
-    print(f"✅ Hoàn tất! File Zip của bạn giờ đây đã nhẹ hơn rất nhiều và được lưu an toàn tại: {drive_dest}")
+    print("🎉 HOÀN TẤT TOÀN BỘ DỰ ÁN CẮT VIDEO!")
